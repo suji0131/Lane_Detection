@@ -9,7 +9,9 @@ import scipy.stats as sp
 class lane:
     def __init__(self):
         'img_name is a string that indicates file path'
-        #self.image = cv2.imread(img_name)
+        self.m_ = np.array([0,0]) #holds previous slope value.
+        self.x1_ = np.array([0,0])
+        self.x2_ = np.array([0,0])
 
     def grayscale(self, img):
         """Applies the Grayscale transform
@@ -88,6 +90,32 @@ class lane:
         self.draw_lines(line_img, lines)
         return line_img
 
+    def regression(self, points, rl):
+        """
+        points is set of points that form lines after hough_transformation.
+        Instead of simply averaging slopes, fitting a regression line is a better
+        and robust option
+        rl: tells whether points form left or right side line.
+        """
+        if (len(points)==0): #when no points are detected, previous line will be used
+            return np.array([self.x1_[rl],540,self.x2_[rl],340])
+        else:
+            x = np.append(points[:,0,0], points[:,0,2]) #x cordinates of every pts
+            y = np.append(points[:,0,1], points[:,0,3])#y cordinates of every pts
+            m, c, r, p, std = sp.linregress(x,y) #regression
+        if (self.m_[rl] == 0): #self.m_ holds previous slope value.
+            pass #for first time
+        else:
+            m = (m + self.m_[rl])/2 #averages previous slope and new slope
+        self.m_[rl] = m #update
+        y1 = 540        #find points that form the regression line
+        x1 = int((y1-c)/m)
+        self.x1_[rl] = np.copy(x1)
+        y2 = 340
+        x2 = int((y2-c)/m)
+        self.x2_[rl] = np.copy(x2)
+        return np.array([x1, y1, x2, y2]) #two points that form a line
+
     def hough_lines(self, img, rho=1, theta=np.pi/180, threshold=50, min_line_len=20, max_line_gap=25):
         """
         `img` should be the output of a Canny transform.
@@ -100,35 +128,10 @@ class lane:
         slope = np.divide(y_, x_)
 
         new_lines = np.zeros((2,1,4), dtype = int)
+        new_lines[0,0,:] = self.regression(lines[slope > 0.1], 0) #right side pts
+        temp = lines[slope < -0.1]
+        new_lines[1,0,:] = self.regression(temp, 1) #left side pts
 
-        lef_pts = lines[slope > 0.1]
-        if (len(lef_pts)==0):
-            pass
-        else:
-            lef_x = np.append(lef_pts[:,0,0], lef_pts[:,0,2])
-            lef_y = np.append(lef_pts[:,0,1], lef_pts[:,0,3])
-            m_l, c_l, r_l, p_l, se_l = sp.linregress(lef_x,lef_y)
-            yl1 = 540
-            xl1 = int((yl1-c_l)/m_l)
-            yl2 = 350
-            xl2 = int((yl2-c_l)/m_l)
-            new_lines[0,0,:] = np.array([xl1, yl1, xl2, yl2])
-
-        rig_pts = lines[slope < -0.1]
-        if (len(rig_pts) ==0):
-            pass
-        else:
-            rig_x = np.append(rig_pts[:,0,0], rig_pts[:,0,2])
-            rig_y = np.append(rig_pts[:,0,1], rig_pts[:,0,3])
-            m_r, c_r, r_r, p_r, se_r = sp.linregress(rig_x,rig_y)
-            yr1 = 540
-            xr1 = int((yr1-c_r)/m_r)
-            yr2 = 350
-            xr2 = int((yr2-c_r)/m_r)
-            new_lines[1,0,:] = np.array([xr1, yr1, xr2, yr2])
-        #new_lines = np.zeros((2,1,4), dtype = int)
-        #new_lines[0,0,:] = np.array([xl1, yl1, xl2, yl2])
-        #new_lines[1,0,:] = np.array([xr1, yr1, xr2, yr2])
 
         line_img = np.copy(self.image)
         self.draw_lines(line_img, new_lines)
@@ -148,17 +151,16 @@ class lane:
     def pipe_line(self, img):
         self.image = img
         vertices = np.array([[(0,540),(430, 320), (510, 320), (910, 540)]], dtype=np.int32)
-        gray_img = self.grayscale(self.image)
-        gray_gauss = self.gaussian_blur(gray_img, 3)
-        canny_img = self.canny(gray_gauss)
-        reg_interest = self.region_of_interest(canny_img, vertices)
-        hough_img = self.hough_lines(reg_interest)
-        #result = self.region_of_interest(hough_img, vertices)
+        gray_img = self.grayscale(self.image) #gray scale
+        gray_gauss = self.gaussian_blur(gray_img, 3) #guassian blur
+        canny_img = self.canny(gray_gauss) #canny edge detection
+        reg_interest = self.region_of_interest(canny_img, vertices) #region of int
+        hough_img = self.hough_lines(reg_interest) #hough transformation
         return hough_img
 
 if __name__== '__main__':
     trail = lane()
-    white_output = 'chall.mp4'
-    clip1 = VideoFileClip("challenge.mp4")
+    white_output = 'yellow.mp4'
+    clip1 = VideoFileClip("solidYellowLeft.mp4")
     white_clip = clip1.fl_image(trail.pipe_line) #NOTE: this function expects color images!!
     white_clip.write_videofile(white_output, audio=False)
