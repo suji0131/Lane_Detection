@@ -25,6 +25,8 @@ One potential shortcoming would be that we can't draw for curved lanes
 
 Another is we have to fine tune parameters for every possible colors or scenarios
 
+The drawn lines are wiggling, not smoothly transitioning
+
 
 ###2. Suggest possible improvements to your pipeline
 
